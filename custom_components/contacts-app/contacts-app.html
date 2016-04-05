@@ -8,7 +8,6 @@
 <link rel="import" href="../../bower_components/paper-fab/paper-fab.html">
 <link rel="import" href="../../bower_components/iron-icons/iron-icons.html">
 <link rel="import" href="../../bower_components/iron-icon/iron-icon.html">
-<link rel="import" href="../../bower_components/iron-iconset/iron-iconset.html">
 <link rel="import" href="../../bower_components/iron-icons/social-icons.html">
 <link rel="import" href="../../bower_components/iron-icons/communication-icons.html">
 <link rel="import" href="../../bower_components/paper-icon-button/paper-icon-button.html">
@@ -16,6 +15,8 @@
 <link rel="import" href="../../bower_components/paper-toast/paper-toast.html">
 <link rel="import" href="../../bower_components/paper-material/paper-material.html">
 <link rel="import" href="../../bower_components/paper-item/paper-icon-item.html">
+<link rel="import" href="../../bower_components/paper-item/paper-item.html">
+<link rel="import" href="../../bower_components/paper-listbox/paper-listbox.html">
 <link rel="import" href="../../bower_components/font-roboto/roboto.html">
 
 <dom-module id="contacts-app">
@@ -209,6 +210,12 @@
                     <paper-input label="Apellido 2" id="apellido2"></paper-input>
                     <paper-input label="Telefono" id="telefono"></paper-input>
                     <paper-input type="email" label="email" id="email"></paper-input>
+                    <h3>Amigos</h3>
+	                <paper-listbox multi id="amigos">
+						<template is="dom-repeat" id="friendsList" items="{{contacts}}">
+							<paper-item><div><span>{{item.nombre}}</span> <span>{{item.apellido1}}</span> <span>{{item.apellido2}}</span></div></paper-item>
+						</template>
+					</paper-listbox>
                     <paper-fab icon="save" on-click="save"></paper-fab>
                 </div>
             </paper-header-panel>
@@ -241,6 +248,10 @@
             handle-as="json"
             url="http://127.0.0.1:8529/_db/contacts/_api/document?collection=persons"
             on-response="addContactResponse"></iron-ajax>
+
+        <iron-ajax id="addFriendship"
+            method="POST"
+            handle-as="json"></iron-ajax>
     </template>
 </dom-module>
 <script>
@@ -266,7 +277,6 @@
         openDetail: function(e){
             var contact = this.$.contactlist.itemForElement(e.target);
             this.$.getContact.url = "http://127.0.0.1:8529/_db/contacts/_api/document/persons/" + contact._key;
-            console.log(this.$.getContact.url);
             this.$.getContact.generateRequest();
             this.$.editnombre.value = contact.nombre;
             this.$.editapellido1.value = contact.apellido1;
@@ -285,7 +295,6 @@
             document.getElementById('detaildata').style.display="inline-block";
         },
         getContactResponse: function(event){
-            console.log(event.detail.response);
             this.contact = event.detail.response;
             this.$.pages.selected = 1;
         },
@@ -299,6 +308,7 @@
             var apellido2 = this.$.apellido2.value;
             var email = this.$.email.value;
             var telefono = this.$.telefono.value;
+            var idsAmigos = this.$.amigos.selectedValues;
 
             var contact = {
                 "_key":key,
@@ -309,7 +319,6 @@
                 "telefono":telefono,
                 "imagen":"http://unsplash.it/1000/1000?image=" + this.contacts.length
             };
-            console.log(contact);
             this.$.addContact.body = JSON.stringify(contact);
             this.$.addContact.generateRequest();
 
@@ -318,9 +327,14 @@
             this.$.apellido2.value="";
             this.$.email.value="";
             this.$.telefono.value="";
+
+            for (var i = 0; i < idsAmigos.length; i++) {
+            	this.$.addFriendship.url = "http://127.0.0.1:8529/_db/contacts/_api/edge/?collection=is_friend&from=persons/" + key + "&to=persons/" + idsAmigos[i];
+            	this.$.addFriendship.body = JSON.stringify({});
+            	this.$.addFriendship.generateRequest();
+            }
         },
         addContactResponse: function(event){
-            console.log(event.detail.response);
             this.$.getAllContacts.generateRequest();
             this.$.pages.selected = 0;
             this.$.toast.text = "Creado correctamente!";
@@ -345,7 +359,6 @@
                 "telefono":telefono,
                 "imagen":this.contact.imagen
             };
-            console.log(contact);
             this.$.editContact.body = JSON.stringify(contact);
             this.$.editContact.url = "http://127.0.0.1:8529/_db/contacts/_api/document/persons/" + this.contact._key;
             this.$.editContact.generateRequest();
