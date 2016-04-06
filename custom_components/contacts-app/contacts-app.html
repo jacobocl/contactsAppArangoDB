@@ -126,6 +126,9 @@
             margin: 0 auto;
             width: 95%;
         }
+        .cursorPointer {
+        	cursor: pointer;
+        }
     </style>
     <template>
 
@@ -206,7 +209,7 @@
                                     <h5>Amigos</h5>
 					                <paper-listbox multi id="editamigos">
 										<template is="dom-repeat" id="friendsList" items="{{contacts}}">
-											<paper-item><div><span>{{item.nombre}}</span> <span>{{item.apellido1}}</span> <span>{{item.apellido2}}</span></div></paper-item>
+											<paper-item class="cursorPointer"><div><span>{{item.nombre}}</span> <span>{{item.apellido1}}</span> <span>{{item.apellido2}}</span></div></paper-item>
 										</template>
 									</paper-listbox>
 				                    <paper-fab icon="save" on-click="save"></paper-fab>
@@ -233,7 +236,7 @@
                     <h3>Amigos</h3>
 	                <paper-listbox multi id="amigos">
 						<template is="dom-repeat" id="friendsList" items="{{contacts}}">
-							<paper-item><div><span>{{item.nombre}}</span> <span>{{item.apellido1}}</span> <span>{{item.apellido2}}</span></div></paper-item>
+							<paper-item class="cursorPointer"><div><span>{{item.nombre}}</span> <span>{{item.apellido1}}</span> <span>{{item.apellido2}}</span></div></paper-item>
 						</template>
 					</paper-listbox>
                     <paper-fab icon="save" on-click="save"></paper-fab>
@@ -390,15 +393,18 @@
         addContactResponse: function(event){
         	this.lastContactKey = event.detail.response._key;
 
-        	var idsAmigos = this.$.amigos.selectedValues;
-        	for (var i = 0; i < idsAmigos.length; i++) {
-            	this.$.addFriendship.url = "http://127.0.0.1:8529/_db/contacts/_api/edge/?collection=is_friend&from=persons/" + this.lastContactKey + "&to=persons/" + this.contacts[idsAmigos[i]]._key;
-            	this.$.addFriendship.body = JSON.stringify({});
-            	this.$.addFriendship.generateRequest();
-            }
+			if (typeof this.$.amigos.selectedValues !== "undefined") {
+				var idsAmigos = this.$.amigos.selectedValues;
+	        	for (var i = 0; i < idsAmigos.length; i++) {
+	            	this.$.addFriendship.url = "http://127.0.0.1:8529/_db/contacts/_api/edge/?collection=is_friend&from=persons/" + this.lastContactKey + "&to=persons/" + this.contacts[idsAmigos[i]]._key;
+	            	this.$.addFriendship.body = JSON.stringify({});
+	            	this.$.addFriendship.generateRequest();
+	            }
+			}
 
-            this.$.getAllContacts.body = JSON.stringify(this.queryGetAllContacts);
+        	this.$.getAllContacts.body = JSON.stringify(this.queryGetAllContacts);
             this.$.getAllContacts.generateRequest();
+
             this.$.amigos.selectedValues=[];
             this.$.pages.selected = 0;
             this.$.toast.text = "Creado correctamente!";
@@ -428,9 +434,6 @@
             this.$.editContact.body = JSON.stringify(contact);
             this.$.editContact.url = "http://127.0.0.1:8529/_db/contacts/_api/document/persons/" + this.contact._key;
             this.$.editContact.generateRequest();
-
-            console.log(this.$.editamigos.selectedValues);
-            console.log(this.contactFriendsIndexes);
 
             //Amistades que deben borrarse
             for (var i = 0; i < this.contactFriendsIndexes.length; i++) {
