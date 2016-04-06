@@ -42,7 +42,7 @@
         #detalle{
             margin:0 auto;
             width: 65%;
-            height: 300px;
+            height: inherit;
             display: block;
             margin-top: 25px;
             text-align: center;
@@ -53,6 +53,7 @@
         #detaildata{
             float: left;
             margin-left: 5%;
+            margin-bottom: 2%;
             font-size: 1.75em;
             position: relative;
             text-align: left;
@@ -76,6 +77,9 @@
         }
         #editform > paper-input{
             height: 50px;
+        }
+        #editform > h5{
+            margin: 10px 5px 5px 0px;
         }
         paper-card{
             width: 300px;
@@ -199,6 +203,13 @@
                                     <paper-input label="Apellido 2" id="editapellido2"></paper-input>
                                     <paper-input label="Telefono" id="edittelefono"></paper-input>
                                     <paper-input type="email" label="email" id="editemail"></paper-input>
+                                    <h5>Amigos</h5>
+					                <paper-listbox multi id="editamigos">
+										<template is="dom-repeat" id="friendsList" items="{{contacts}}">
+											<paper-item><div><span>{{item.nombre}}</span> <span>{{item.apellido1}}</span> <span>{{item.apellido2}}</span></div></paper-item>
+										</template>
+									</paper-listbox>
+				                    <paper-fab icon="save" on-click="save"></paper-fab>
                                     <paper-fab icon="clear" on-click="canceledit" id="cancel"></paper-fab>
                                     <paper-fab icon="save" on-click="edit"></paper-fab>
                                 </div>
@@ -253,7 +264,7 @@
             method="DELETE"
             on-response="deleteContactResponse"></iron-ajax>
 
-        <iron-ajax id="deleteContactFriendship"
+        <iron-ajax id="deleteAllFriendshipsContact"
             url="http://127.0.0.1:8529/_db/contacts/_api/cursor"
             handle-as="json"
             method="POST"></iron-ajax>
@@ -262,6 +273,11 @@
             handle-as="json"
             method="PUT"
             on-response="editContactResponse"></iron-ajax>
+
+        <iron-ajax id="deleteOneFriendshipsContact"
+            url="http://127.0.0.1:8529/_db/contacts/_api/cursor"
+            handle-as="json"
+            method="POST"></iron-ajax>
 
         <iron-ajax id="addContact"
             method="POST"
@@ -290,6 +306,9 @@
         },
         allContactsResponse: function(event){
             this.contacts = event.detail.response.result;
+            if (this.contacts.length>0){
+            	this.contact = this.contacts[0];
+            }
         },
         selectedChanged: function(newValue, oldValue){
             console.log(newValue);
@@ -323,6 +342,7 @@
         },
         getContactFriendsResponse: function(event){
         	this.contactFriends=[];
+        	this.contactFriendsIndexes=[];
             friendsKeys = event.detail.response.result;
             
             for (var i = 0; i < friendsKeys.length; i++) {
@@ -330,6 +350,7 @@
             	found = false;
             	for (var j = 0; j < this.contacts.length && !found; j++) {
             		if (this.contacts[j]._key==friendKey[1]){
+            			this.contactFriendsIndexes.push(j);
             			friendFullName = this.contacts[j].nombre + " " + this.contacts[j].apellido1 + " " + this.contacts[j].apellido2;
             			this.contactFriends.push(friendFullName);
             			found=true;
@@ -378,13 +399,16 @@
 
             this.$.getAllContacts.body = JSON.stringify(this.queryGetAllContacts);
             this.$.getAllContacts.generateRequest();
+            this.$.amigos.selectedValues=[];
             this.$.pages.selected = 0;
             this.$.toast.text = "Creado correctamente!";
             this.$.toast.toggle();
         },
         showedit: function(){
+        	document.getElementById('detalle').style.height="";
             document.getElementById('editform').style.display="inline-block";
             document.getElementById('detaildata').style.display="none";
+            this.$.editamigos.selectedValues = this.contactFriendsIndexes.slice();
         },
         edit: function(){
             var nombre = this.$.editnombre.value;
@@ -404,6 +428,32 @@
             this.$.editContact.body = JSON.stringify(contact);
             this.$.editContact.url = "http://127.0.0.1:8529/_db/contacts/_api/document/persons/" + this.contact._key;
             this.$.editContact.generateRequest();
+
+            console.log(this.$.editamigos.selectedValues);
+            console.log(this.contactFriendsIndexes);
+
+            //Amistades que deben borrarse
+            for (var i = 0; i < this.contactFriendsIndexes.length; i++) {
+            	if (this.$.editamigos.selectedValues.indexOf(this.contactFriendsIndexes[i]) == -1){
+            		var queryDeleteOneFriendship = {"query":"FOR f IN is_friend FILTER f._from==\"persons/" + this.contact._key + "\" AND f._to==\"persons/" + this.contacts[this.contactFriendsIndexes[i]]._key + "\" REMOVE {_key: f._key} IN is_friend"};
+		            this.$.deleteOneFriendshipsContact.body = JSON.stringify(queryDeleteOneFriendship);
+		            this.$.deleteOneFriendshipsContact.generateRequest();
+            	}
+            	
+            }
+
+            //Amistades que deben añadirse
+            for (var i = 0; i < this.$.editamigos.selectedValues.length; i++) {
+            	if (this.contactFriendsIndexes.indexOf(this.$.editamigos.selectedValues[i]) == -1){
+            		
+					this.$.addFriendship.url = "http://127.0.0.1:8529/_db/contacts/_api/edge/?collection=is_friend&from=persons/" + this.contact._key + "&to=persons/" + this.contacts[this.$.editamigos.selectedValues[i]]._key;
+	            	this.$.addFriendship.body = JSON.stringify({});
+	            	this.$.addFriendship.generateRequest();
+            	}
+            	
+            }
+
+            
         },
         editContactResponse: function(event){
             document.getElementById('detaildata').style.display="inline-block";
@@ -421,8 +471,8 @@
             this.$.deleteContact.generateRequest();
 
             var queryDeleteFriendships = {"query":"FOR f IN is_friend FILTER f._from==\"persons/" + this.contact._key + "\" OR f._to==\"persons/" + this.contact._key + "\" REMOVE {_key: f._key} IN is_friend"};
-            this.$.deleteContactFriendship.body = JSON.stringify(queryDeleteFriendships);
-            this.$.deleteContactFriendship.generateRequest();
+            this.$.deleteAllFriendshipsContact.body = JSON.stringify(queryDeleteFriendships);
+            this.$.deleteAllFriendshipsContact.generateRequest();
         },
         deleteContactResponse: function(event){
             this.$.toast.text = "Borrado correctamente!";
