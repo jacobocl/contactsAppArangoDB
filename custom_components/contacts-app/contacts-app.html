@@ -191,14 +191,22 @@
                                             <div class="datos">{{contact.email}}</div>
                                         </div>
                                     </paper-icon-item>
-	                                    <paper-icon-item>
-	                                        <div>
-	                                            <div item-ico class="avatar">
-	                                                <iron-icon icon="social:people"></iron-icon>
-	                                            </div>
-	                                            <div class="datos">{{contactFriends}}</div>
-	                                        </div>
-	                                    </paper-icon-item>
+                                    <paper-icon-item>
+                                        <div>
+                                            <div item-ico class="avatar">
+                                                <iron-icon icon="social:people"></iron-icon>
+                                            </div>
+                                            <div class="datos">{{contactFriends}}</div>
+                                        </div>
+                                    </paper-icon-item>
+                                    <paper-icon-item>
+                                        <div>
+                                            <div item-ico class="avatar">
+                                                <iron-icon icon="icons:group-work"></iron-icon>
+                                            </div>
+                                            <div class="datos">{{contactFriendsOfFriends}}</div>
+                                        </div>
+                                    </paper-icon-item>
                                 </div> 
                                 <div id="editform">
                                     <paper-input label="Nombre" id="editnombre"></paper-input>
@@ -252,15 +260,17 @@
             method="POST"
             on-response="allContactsResponse"></iron-ajax>
 
-        <iron-ajax id="getContact"
-            handle-as="json"
-            on-response="getContactResponse"></iron-ajax>
-
         <iron-ajax id="getContactFriends"
         	url="http://127.0.0.1:8529/_db/contacts/_api/cursor"
             handle-as="json"
             method="POST"
             on-response="getContactFriendsResponse"></iron-ajax>
+
+        <iron-ajax id="getContactFriendsofFriends"
+        	url="http://127.0.0.1:8529/_db/contacts/_api/cursor"
+            handle-as="json"
+            method="POST"
+            on-response="getContactFriendsofFriendsResponse"></iron-ajax>
 
         <iron-ajax id="deleteContact"
             handle-as="json"
@@ -319,9 +329,13 @@
         openDetail: function(e){
             this.contact = this.$.contactlist.itemForElement(e.target);
             
-            var queryGetContactFriends = {"query":"FOR f IN is_friend FILTER f._from==\"persons/" + this.contact._key + "\" RETURN f._to"};
+            var queryGetContactFriends = {"query":"FOR v IN 1..1 OUTBOUND 'persons/"+ this.contact._key +"' GRAPH 'friendship' SORT v._key RETURN DISTINCT v._key"};
             this.$.getContactFriends.body = JSON.stringify(queryGetContactFriends);
             this.$.getContactFriends.generateRequest();
+
+            var queryGetContactFriendsOfFriends = {"query":"FOR v IN 2..2 OUTBOUND 'persons/"+ this.contact._key +"' GRAPH 'friendship' FILTER v._id!='persons/"+ this.contact._key +"' SORT v._key RETURN DISTINCT {_key: v._key, nombre: v.nombre, apellido1: v.apellido1, apellido2: v.apellido2}"};
+            this.$.getContactFriendsofFriends.body = JSON.stringify(queryGetContactFriendsOfFriends);
+            this.$.getContactFriendsofFriends.generateRequest();
 
             this.$.pages.selected = 1;
             this.$.editnombre.value = this.contact.nombre;
@@ -339,29 +353,34 @@
             document.getElementById('editform').style.display="none";
             document.getElementById('detaildata').style.display="inline-block";
         },
-        getContactResponse: function(event){
-            this.contact = event.detail.response;
-            this.$.pages.selected = 1;
-        },
         getContactFriendsResponse: function(event){
         	this.contactFriends=[];
         	this.contactFriendsIndexes=[];
-            friendsKeys = event.detail.response.result;
+            this.friendsKeys = event.detail.response.result;
             
-            for (var i = 0; i < friendsKeys.length; i++) {
-            	friendKey = friendsKeys[i].split("/");
-            	found = false;
-            	for (var j = 0; j < this.contacts.length && !found; j++) {
-            		if (this.contacts[j]._key==friendKey[1]){
-            			this.contactFriendsIndexes.push(j);
-            			friendFullName = this.contacts[j].nombre + " " + this.contacts[j].apellido1 + " " + this.contacts[j].apellido2;
-            			this.contactFriends.push(friendFullName);
-            			found=true;
-            		}
+            for (var i = 0; i < this.friendsKeys.length; i++) {
+            	friendIndex = this.busquedaBinaria(this.contacts, this.friendsKeys[i], true);
+            	if (friendIndex!=-1) {
+					this.contactFriendsIndexes.push(friendIndex);
+        			friendFullName = this.contacts[friendIndex].nombre + " " + this.contacts[friendIndex].apellido1 + " " + this.contacts[friendIndex].apellido2;
+        			this.contactFriends.push(friendFullName);
             	}
             }
             
             this.contactFriends=this.contactFriends.join(", ");
+        },
+        getContactFriendsofFriendsResponse: function(event){
+        	this.contactFriendsOfFriends=[];
+            friendsOfFriendsArray = event.detail.response.result;
+            
+            for (var i = 0; i < friendsOfFriendsArray.length; i++) {
+            	if (this.busquedaBinaria(this.friendsKeys, friendsOfFriendsArray[i]._key, false) == -1) {
+					friendFullName = friendsOfFriendsArray[i].nombre + " " + friendsOfFriendsArray[i].apellido1 + " " + friendsOfFriendsArray[i].apellido2;
+	            	this.contactFriendsOfFriends.push(friendFullName);
+            	}
+            }
+            
+            this.contactFriendsOfFriends=this.contactFriendsOfFriends.join(", ");
         },
         create: function(){
             this.$.pages.selected = 2;
@@ -437,23 +456,24 @@
 
             //Amistades que deben borrarse
             for (var i = 0; i < this.contactFriendsIndexes.length; i++) {
-            	if (this.$.editamigos.selectedValues.indexOf(this.contactFriendsIndexes[i]) == -1){
-            		var queryDeleteOneFriendship = {"query":"FOR f IN is_friend FILTER f._from==\"persons/" + this.contact._key + "\" AND f._to==\"persons/" + this.contacts[this.contactFriendsIndexes[i]]._key + "\" REMOVE {_key: f._key} IN is_friend"};
+            	friendIndex=this.contactFriendsIndexes[i];
+            	if (this.busquedaBinaria(this.$.editamigos.selectedValues, friendIndex, false) == -1){
+            		var queryDeleteOneFriendship = {"query":"FOR f IN is_friend FILTER f._from==\"persons/" + this.contact._key + "\" AND f._to==\"persons/" + this.contacts[friendIndex]._key + "\" REMOVE {_key: f._key} IN is_friend"};
 		            this.$.deleteOneFriendshipsContact.body = JSON.stringify(queryDeleteOneFriendship);
 		            this.$.deleteOneFriendshipsContact.generateRequest();
             	}
-            	
             }
 
             //Amistades que deben añadirse
             for (var i = 0; i < this.$.editamigos.selectedValues.length; i++) {
-            	if (this.contactFriendsIndexes.indexOf(this.$.editamigos.selectedValues[i]) == -1){
-            		
-					this.$.addFriendship.url = "http://127.0.0.1:8529/_db/contacts/_api/edge/?collection=is_friend&from=persons/" + this.contact._key + "&to=persons/" + this.contacts[this.$.editamigos.selectedValues[i]]._key;
-	            	this.$.addFriendship.body = JSON.stringify({});
-	            	this.$.addFriendship.generateRequest();
+            	friendSelectedIndex=this.$.editamigos.selectedValues[i];
+            	if (this.contacts[friendSelectedIndex]._key!=this.contact._key) {	//No creamos una amistad hacia uno mismo
+            		if (this.busquedaBinaria(this.contactFriendsIndexes, friendSelectedIndex, false) == -1){
+						this.$.addFriendship.url = "http://127.0.0.1:8529/_db/contacts/_api/edge/?collection=is_friend&from=persons/" + this.contact._key + "&to=persons/" + this.contacts[friendSelectedIndex]._key;
+		            	this.$.addFriendship.body = JSON.stringify({});
+		            	this.$.addFriendship.generateRequest();
+	            	}
             	}
-            	
             }
 
             
@@ -484,7 +504,29 @@
             this.$.getAllContacts.body = JSON.stringify(this.queryGetAllContacts);
             this.$.getAllContacts.generateRequest();
             this.$.pages.selected = 0;
-        }
+        },
+		busquedaBinaria: function(arrayOrdenado, key, tiene_key) {
+		    return this.busquedaBinariaImpl(arrayOrdenado, key, 0, arrayOrdenado.length-1, tiene_key);
+		},
+		busquedaBinariaImpl: function(arrayOrdenado, key, primero, ultimo, tiene_key) {
+		    if (primero <= ultimo){
+		        var mitad = Math.floor((ultimo+primero) / 2);
+		        var elem;
+		        if (tiene_key) {
+		        	elem = arrayOrdenado[mitad]._key;
+		        } else {
+		        	elem = arrayOrdenado[mitad];
+		        }
 
+		        if (elem == key) {
+		            return mitad;
+		        } else if (key < elem) {
+		            return this.busquedaBinariaImpl(arrayOrdenado, key, primero, mitad-1, tiene_key);
+		        } else if (key > elem) {
+		            return this.busquedaBinariaImpl(arrayOrdenado, key, mitad+1, ultimo, tiene_key);
+		        }
+		    }
+		    return -1;
+		}
     });
 </script>
